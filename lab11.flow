@@ -1,0 +1,90 @@
+import string;
+import lingo/peg;
+import lingo/pegcode/driver;
+
+Program(definitions : [Definition], body : Body);
+
+Definition(name : VarName, type : Type);
+Body(statements : [Statement]);
+
+
+Statement ::= Assignment, Test, Print, Union, If, While;
+
+Union(statements : [Statement]);
+
+Iter(statement : Statement);
+Assignment(name : VarName, expr : Expression);
+Expression ::= ArithExpr, FuncExpr;
+Test(log : LogicalExpr);
+Condition ::= EQ, NEQ, LS, GT, LEQ, GEQ;
+EQ(left : ArithExpr, right : ArithExpr);
+NEQ(left : ArithExpr, right : ArithExpr);
+LS(left : ArithExpr, right : ArithExpr);
+GT(left : ArithExpr, right : ArithExpr);
+LEQ(left : ArithExpr, right : ArithExpr);
+GEQ(left : ArithExpr, right : ArithExpr);
+
+ArithExpr ::= Div, Mult, Sub, Add, Neg, Var, Num;
+Div(left : ArithExpr, right : ArithExpr);
+Mult(left : ArithExpr, right : ArithExpr);
+Sub(left : ArithExpr, right : ArithExpr);
+Add(left : ArithExpr, right : ArithExpr);
+Neg(negExpr : ArithExpr);
+Var(varName : VarName, type : Type);
+Num(value : int);
+
+LogicalExpr ::= Or, And, Condition;
+Or(left: LogicalExpr, right:LogicalExpr);
+And(left: LogicalExpr, right:LogicalExpr);
+
+If(condition : LogicalExpr, onTrue : Body);
+While(condition : LogicalExpr, body : Body);
+FuncExpr ::= App, Upd;
+App(var : Var, index : Num);
+Upd(var : Var, index : Num, newValue : Num);
+
+Type ::= Int, Array;
+Int();
+Array(t : Type);
+Value ::= Int, Array;
+VarName(name : string);
+
+Print(pv : ArithExpr);
+
+
+eatSubs(subs : [flow]){
+    fold(subs[1], subs[0], \acc, nextsub -> Sub(acc, nextsub));
+}
+eatDivs(divs : [flow]){
+    fold(divs[1], divs[0], \acc, nextdiv -> Div(acc, nextdiv));
+}
+
+lingoGrammarOp : ref Maybe<[PegOp]> = ref None();
+lingoGrammar(){
+    onlyOnce(lingoGrammarOp, \ -> {
+        compilePegGrammar("#include /home/boris/MTK/nemoGrammar.lingo");
+    });
+}
+actions = SemanticActions(setTree(setTree(defaultPegActions.t, "eatSubs", eatSubs), "eatDivs", eatDivs));
+
+main(){
+    prog = "
+        VAR v : int;
+        VAR v : [[int]];
+        {
+	        print(v);
+	        print(v);
+	        x := (x + 1);
+	        v := 1;
+            {
+		        x := (x + 1);
+		        U x := (x - 1);
+	        };
+	        
+	        (x < (x + 1)) ?;
+	        x := (x + (2 * x));
+        }
+    ";
+    ast = parsic(lingoGrammar(), prog, actions);
+    println(ast);
+}

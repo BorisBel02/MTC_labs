@@ -1,0 +1,11 @@
+import runtime;
+import material/material;
+import ds/array;
+
+main(){
+	int_arr = [1, 2, 3];
+	
+	str_arr = map(int_arr, \i -> i2s(i));
+
+	println(str_arr);
+}

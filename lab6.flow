@@ -1,0 +1,112 @@
+import string;
+import lingo/pegcode/driver;
+import runtime;
+import ds/arrayutils;
+import ds/array;
+
+Expression ::= Mult, Add, IntConst, Variable;
+
+Add(left : Expression, right : Expression);
+
+Mult(left : Expression, right : Expression);
+
+IntConst(value : int);
+
+Variable(name : string);
+
+
+
+ExprRPN ::= AddRPN, MultRPN, IntConstRPN;
+AddRPN();
+MultRPN();
+IntConstRPN(value : int);
+
+valuesArray : ref [int] = ref [];
+
+calculate(exp : Expression, vars : Tree) -> Maybe<int> {
+    
+
+    getValue = \l, r, op -> {
+        switch(calculate(l, vars)) {
+            Some(left) :  switch(calculate(r, vars)){
+                Some(right) : op(left, right);
+                None() : None();
+            }
+            None() : None();
+        }
+    }
+
+    switch(exp) {
+        Add(l,r) : getValue(l,r,\left,right -> Some(left + right));
+        Mult(l,r) : getValue(l,r,\left,right -> Some(left * right));
+        IntConst(value) : Some(value);
+        Variable(name) : lookupTreeDef(vars, name, None());
+    }
+}
+
+expToStringRPN(exp : Expression) -> string {
+    switch(exp) {
+         Add(l, r) : expToStringRPN(l) + " " + expToStringRPN(r) + " +" ;
+         Mult(l, r) : expToStringRPN(l) + " " + expToStringRPN(r) + " *";
+         IntConst(value) : i2s(value);
+         Variable(name) : name
+    }
+}
+
+lingoGrammar() {
+    compilePegGrammar("#include /home/boris/MTK/arith.lingo");
+}
+
+
+printValue(name : string, value : Maybe<int>){
+    switch (value) {
+        Some(v) : println(name + i2s(v) + "\n");
+        None()  : println(name + "None" + "\n");
+    }
+}
+
+
+push(val : int){
+    refArrayPush(valuesArray, val);
+}
+pop() {
+    val : int = ^valuesArray[length(^valuesArray)-1];
+    valuesArray := removeLastElement(^valuesArray);
+    val
+}
+
+
+calculateRPN(args : [flow]){
+    rpnsArr : [ExprRPN] = args[0];
+    
+    iter(rpnsArr, \exp -> switch(exp){
+        IntConstRPN(value) : push(value);
+        AddRPN() : push(pop()+pop());
+        MultRPN() : push(pop()*pop());
+    })
+
+    flow(^valuesArray[0])
+}
+
+
+main() {
+   	
+    expr = "2 + 2 * 3 + 5";
+	
+    ast = parsic(lingoGrammar(), expr, defaultPegActions);
+   
+    vars : Tree<string, Maybe<int>> = setTree(setTree(makeTree(), "x", Some(5)), "y", Some(2));
+
+    RPNstring = expToStringRPN(ast);
+
+	println("AST to RPN: " + RPNstring + "\n");
+    
+    RPNgrammar = compilePegGrammar("#include /home/boris/MTK/RPN.lingo");
+    actions = SemanticActions(setTree(defaultPegActions.t, "calculateRPN", calculateRPN));
+
+    parsic(RPNgrammar, RPNstring, actions);
+
+
+    printValue("Calculated value: ", calculate(ast, vars));
+    quit(0);
+}

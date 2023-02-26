@@ -1,0 +1,575 @@
+import string;
+import lingo/peg;
+import lingo/pegcode/driver;
+
+Program(definitions : [Definition], body : Body);
+
+Definition(name : VarName, type : Type);
+Body(statements : [Statement]);
+
+
+Statement ::= Assignment, Upd, Test, Print, Union, If, While, Iter;
+
+Union(statements : [Statement]);
+
+Iter(statement : Assignment);
+Assignment(name : VarName, expr : ArithExpr);
+Test(log : LogicalExpr);
+Condition ::= EQ, NEQ, LS, GT, LEQ, GEQ;
+EQ(left : ArithExpr, right : ArithExpr);
+NEQ(left : ArithExpr, right : ArithExpr);
+LS(left : ArithExpr, right : ArithExpr);
+GT(left : ArithExpr, right : ArithExpr);
+LEQ(left : ArithExpr, right : ArithExpr);
+GEQ(left : ArithExpr, right : ArithExpr);
+
+ArithExpr ::= Div, Mult, Sub, Add, Neg, VarName, Num, App;
+Div(left : ArithExpr, right : ArithExpr);
+Mult(left : ArithExpr, right : ArithExpr);
+Sub(left : ArithExpr, right : ArithExpr);
+Add(left : ArithExpr, right : ArithExpr);
+Neg(negExpr : ArithExpr);
+Num(value : int);
+
+BinaryExpr ::= Div, Mult, Sub, Add, Condition;
+
+LogicalExpr ::= Or, And, Condition;
+Or(left: LogicalExpr, right:LogicalExpr);
+And(left: LogicalExpr, right:LogicalExpr);
+
+If(condition : LogicalExpr, onTrue : Body);
+While(condition : LogicalExpr, body : Body);
+App(var : VarName, index : ArithExpr);
+Upd(var : VarName, index : ArithExpr, newValue : ArithExpr);
+
+
+
+Type ::= Int, Array;
+Int();
+Array(t : Type);
+VarName(name : string);
+
+Print(pv : ArithExpr);
+
+VM_statement ::= VM_op, VM_conditinon, VM_goto;
+oneLineStatement ::= Assignment, Print, Test, Upd, Iter;
+VM_op(op : oneLineStatement, next : [int]);
+VM_conditinon : (condition : LogicalExpr, onTrue : [int], onFalse : [int]);
+VM_goto : (labels : [int]);
+
+VarValue ::= Num, ArrayVal;
+ArrayVal(array : Tree<int, VarValue>);
+
+ProgramState ::= Normal, Critical;
+Normal(definitions : Tree<VarName, Type>, variablesValues : Tree<VarName, VarValue>, currentLabel : int);
+Critical(failedLabel : int, message : string);
+
+Checkable ::= ArithExpr, Condition;
+
+translateIntoVmCode(prog : Program) -> Pair<ProgramState, Tree<int, VM_statement>> {
+    state = handleDefinitions(prog.definitions);
+    switch(state){
+        Critical(l, m) : {
+            println("Program failed on lable: " + i2s(l) + "\nError message: " + m);
+            Pair(state, makeTree())
+        }
+        Normal(defs, vals, l) : {
+            code = handleBody(prog.body.statements, 0, state);
+            Pair(state, code)
+        }
+    }
+}
+handleDefinitions(definitions : [Definition]) -> ProgramState{
+    fold(definitions, Normal(makeTree(), makeTree(), 0), \state, def -> {
+        switch(state){
+            Critical(l, m) : state
+            Normal(defs, vals, cl) : {
+                switch(lookupTree(state.definitions, def.name)){
+                    Some(v) : {
+                        Critical(-1, "double definition of variable: " + def.name.name);
+                    }
+                    None() : {
+                        Normal(setTree(state.definitions, def.name, def.type), vals, cl);
+                    }
+                }
+            }
+        }
+    })
+}
+handleBody(statements : [Statement], label : int, state : Normal) -> Tree<int, VM_statement>{
+    fold(statements, makeTree(), \acc, op -> {
+        mergeTree(acc, translateOperation(op, label + sizeTree(acc), state));
+    })
+}
+translateOperation(statement : Statement, label : int, state : Normal) -> Tree<int, VM_statement>{
+    switch(statement){
+        /*Iter(st) : {
+            makeTree1(label, VM_op(st, [label, label + 1]))
+        }*/
+        oneLineStatement() : {
+            if(checkTypes(statement, state) == false){
+                println("COMPILATION FAILED");
+                println("failed on statement:");
+                println(statement);
+                quit(1);
+            }
+            makeTree1(label, VM_op(statement, [label+1]))
+        }
+        Union(stset) : {
+            inUnion = fold(stset, Pair(makeTree(), []), \acc, st -> {
+                stLabel = label + sizeTree(acc.first) + 1;
+                tree = mergeTree(acc.first, translateOperation(st, stLabel, state));
+                gotoLabels = arrayPush(acc.second, stLabel);
+                Pair(tree, gotoLabels);
+            });
+            afterLabel = label + sizeTree(inUnion.first) + 1;
+            //println("afterLabel: " + i2s(afterLabel));
+            union = fold(inUnion.second, inUnion.first, \acc, choiceLabel -> {
+                switch(lookupTree(acc, choiceLabel)){
+                    Some(st) : {
+                        switch(st){
+                            VM_op(op, next) : {
+                                setTree(acc, choiceLabel, VM_op(op, [afterLabel]))
+                            }
+                            VM_goto(l) : {
+                                setTree(acc, choiceLabel, VM_goto([afterLabel]))
+                            }
+                            VM_conditinon(cond, onT, onF) : {
+                                setTree(acc, choiceLabel, VM_conditinon(cond, onT, [afterLabel]))
+                            }
+                        }
+                    }
+                    None() : {
+                        acc
+                    } 
+                }
+            });
+            setTree(union, label, VM_goto(inUnion.second))
+        }
+        If(cond, body) : {
+            ifbody = handleBody(body.statements, label + 1, state);
+            setTree(ifbody, label, VM_conditinon(cond, [label + 1], [label + sizeTree(ifbody) + 1]))
+        }
+        While(cond, body) : {
+            whilebody = handleBody(body.statements, label + 1, state);
+            while = setTree(whilebody, label + sizeTree(whilebody) + 1, VM_goto([label]));
+            setTree(while, label, VM_conditinon(cond, [label + 1], [label + sizeTree(while) + 1]))
+        } 
+    }
+}
+checkTypes(op : oneLineStatement, state : Normal){
+    switch(op){
+        Assignment(name, expr) : {
+            if(!(checkTypesInArithExpr(name, state) && checkTypesInArithExpr(expr, state))){
+                println("Compilation failed!");
+                false
+            }
+            else{
+                true
+            }
+        }
+        Print(expr) : {
+            if(!checkTypesInArithExpr(expr, state)){
+                println("Compilation failed!");
+                false
+            }
+            else{
+                true
+            }
+        }
+        Test(lexp) : {
+            if(!goDownInLogicExpr(lexp, state)){
+                println("Compilation failed!");
+                false
+            }
+            else{
+                true
+            }
+        }
+        Upd(var, index, newValue) : {
+            switch(lookupTree(state.definitions, var)){
+                Some(type) : {
+                    switch(type){
+                        Array(t) : {
+                            if(!(checkTypesInArithExpr(index, state) && checkTypesInArithExpr(newValue, state))){
+                                println("Compilation failed!");
+                                false
+                            }
+                            else{
+                                true
+                            }
+                        }
+                        default : {
+                            println("Compilation failed!");
+                            false
+                        }
+                    }
+                }
+                None() : {
+                    println("Compilation failed!");
+                    false
+                }
+            }
+        }
+        Iter(st) : {
+            checkTypes(st, state)
+        }
+    }
+}
+goDownInLogicExpr(exp : LogicalExpr, state : Normal) -> bool{
+    switch(exp){
+        Or(l, r) : {
+            goDownInLogicExpr(l, state) && goDownInLogicExpr(r, state)
+        }
+        And(l, r) : {
+            goDownInLogicExpr(l, state) && goDownInLogicExpr(r, state)
+        }
+        Condition() : {
+            checkTypesInArithExpr(exp, state)
+        }
+    }
+}
+checkTypesInArithExpr(expr : Checkable, state : Normal) -> bool{
+    switch(expr){
+        VarName(name) : {
+            switch(lookupTree(state.definitions, expr)){
+                Some(type) : {
+                    switch(type){
+                        Int() : true
+                        default : false
+                    }
+                }
+                None() : {
+                    println("Undefined variable: " + name);
+                    false
+                }
+            }
+        }
+        Neg(n) : {
+            checkTypesInArithExpr(n, state)
+        }
+        Num(d) : true
+        App(var, index) : {
+            switch(lookupTree(state.definitions, var)){
+                Some(type) : {
+                    switch(type){
+                        Array(t) : {
+                            checkTypesInArithExpr(index, state)
+                        }
+                        default : false
+                    }
+                }
+                None() : {
+                    println("Undefined variable: " + var.name);
+                    false
+                }
+            }
+        }
+        BinaryExpr() : {
+            checkTypesInArithExpr(expr.left, state) && checkTypesInArithExpr(expr.right, state)
+        }
+    }
+}
+maxLabel (tree : Tree<int, VM_statement>) -> int {
+    foldTree(tree, -1, \label, st, acc -> {
+        max(acc, label);
+    })
+}
+
+runVM(state : ProgramState, VMcode : Tree<int, VM_statement>){
+    switch(state){
+        Critical(l, m) : {
+            println("Program failed on lable: " + i2s(l) + "\nError message: " + m);
+        }
+        Normal(defs, vals, l) : {
+            //println(state.variablesValues);
+            switch(lookupTree(VMcode, l)){
+                Some(command) : {
+                    runVMcommand(command, state, VMcode)
+                }
+                None() : {
+                    st = Critical(l, "unknown label: " + i2s(l));
+                    runVM(st, VMcode)
+                }
+            }
+        }
+    }
+}
+runVMcommand(command : VM_statement, state : Normal, VMcode : Tree<int, VM_statement>) -> void{
+    switch(command){
+        VM_op(op, next) : {
+            switch(runVMOp(op, state)){
+                Normal(defs, vals, l) : runVM(Normal(defs, vals, goToLabel(next)), VMcode)
+                Critical(l, m) : runVM(Critical(l, m), VMcode)
+            }
+        }
+        VM_conditinon(cond, onT, onF) : {
+            switch(calcLogic(cond, state)){
+                Some(res) : {
+                    if(res){
+                        runVM(Normal(state.definitions, state.variablesValues, goToLabel(onT)), VMcode);
+                    }
+                    else{
+                        runVM(Normal(state.definitions, state.variablesValues, goToLabel(onF)), VMcode);
+                    }
+                }
+                None() : runVM(Critical(state.currentLabel, "None() result"), VMcode);
+            }
+        }
+        VM_goto(labels) : {
+            runVM(Normal(state.definitions, state.variablesValues, goToLabel(labels)), VMcode);
+        }
+    }
+}
+runVMOp(op : oneLineStatement, state : Normal) -> ProgramState{
+    switch(op){
+        Assignment(name, expr) : {
+            switch(lookupTree(state.definitions, name)){
+                Some(v) : {
+                    switch(v){
+                        Int() : {
+                            switch(calc(expr, state)){
+                                Some(res) : {
+                                    Normal(state.definitions, setTree(state.variablesValues, name, Num(res)), state.currentLabel);
+                                }
+                                None() : Critical(state.currentLabel, "None() result")
+                            }
+                        }
+                        default : Critical(state.currentLabel, "Wrong variable type")
+                    }                    
+                }
+                None() : Critical(state.currentLabel, "undefined variable: " + name.name)
+            }
+        }
+        Print(pv) : {
+            switch(calc(pv, state)){
+                Some(res) : {
+                    println(i2s(res));
+                    state
+                }
+                None() : Critical(state.currentLabel, "None() result")
+            }
+        }
+        Test(logic) : {
+            switch(calcLogic(logic, state)){
+                Some(res) : {
+                    if(!res){
+                        Critical(state.currentLabel, "Assertion failed!")
+                    }
+                    else{
+                        state
+                    }
+                }
+                None() : Critical(state.currentLabel, "None() result")
+            }
+            
+        }
+        Iter(as) : {
+            iterloop(as, state)
+        }
+        Upd(var, index, newValue) : {
+            switch(calc(index, state)){
+                Some(i) : {
+                    switch(lookupTree(state.definitions, var)){
+                        Some(v) : {
+                            switch(v){
+                                Array(t) : {
+                                    switch(lookupTree(state.variablesValues, var)){
+                                        Some(arr) : {
+                                            switch(calc(newValue, state)){
+                                                Some(res) : {
+                                                    newArr = setTree(arr.array, i, Num(res));
+                                                    newValTree = setTree(state.variablesValues, var, ArrayVal(newArr));
+                                                    Normal(state.definitions, newValTree, state.currentLabel)
+                                                }
+                                                None() : Critical(state.currentLabel, "None() result")
+                                            }
+                                        }
+                                        None() : {
+                                            switch(calc(newValue, state)){
+                                                Some(res) : {
+                                                    newArr = setTree(makeTree(), i, Num(res));
+                                                    newValTree = setTree(state.variablesValues, var, ArrayVal(newArr));
+                                                    Normal(state.definitions, newValTree, state.currentLabel)
+                                                }
+                                                None() : Critical(state.currentLabel, "None() result")
+                                            }
+                                        }
+                                    }
+                                }
+                                default : Critical(state.currentLabel, "Wrong type of var: " + var.name)
+                            }
+                        }
+                        None() : {
+                            Critical(state.currentLabel, "Undefined var: " + var.name)
+                        }
+                    }
+                }
+                None() : Critical(state.currentLabel, "None() index")
+            }
+        }
+    }
+}
+iterloop(op : Assignment, state : Normal) -> ProgramState{
+    if(random() < 0.5){
+        iterloop(op, state)
+    }
+    else{
+        state
+    }
+}
+goToLabel(labels : [int]){
+    labels[0];
+}
+
+
+div(l : Maybe<int>, r : Maybe<int>) -> Maybe<int>{
+    maybeBind2(\a, b -> {Some(a / b)})(l, r)
+}
+mult(l : Maybe<int>, r : Maybe<int>) -> Maybe<int>{
+    maybeBind2(\a, b -> {Some(a * b)})(l, r)
+}
+sub(l : Maybe<int>, r : Maybe<int>) -> Maybe<int>{
+    maybeBind2(\a, b -> {Some(a - b)})(l, r)
+}
+add(l : Maybe<int>, r : Maybe<int>) -> Maybe<int>{
+    maybeBind2(\a, b -> {Some(a + b)})(l, r)
+}
+neg(r : Maybe<int>) -> Maybe<int>{
+    r ?? Some(-r)
+    : None();
+}
+
+calc(ast : ArithExpr, state : Normal) -> Maybe<int>{
+    switch(ast){
+        Div(l, r) : {div(calc(l, state), calc(r, state))}
+        Mult(l, r) : {mult(calc(l, state), calc(r, state))}
+        Sub(l, r) : {sub(calc(l, state), calc(r, state))}
+        Add(l, r) : {add(calc(l, state), calc(r, state))}
+        Neg(negExp) : {neg(calc(negExp, state))}
+        Num(val) : {Some(val)}
+        VarName(name) : {
+            variableValue : Maybe<VarValue> = lookupTree(state.variablesValues, ast);
+            switch(variableValue){
+                None(): None();
+                Some(v): {
+                    switch(v){
+                        Num(val) : Some(val);
+                        default : None();
+                    }
+                };
+            }
+        }
+        App(var, index) : {
+            switch(calc(index, state)){
+                Some(i) : {
+                    getArrVal(state, var, i)
+                }
+                None() : None()
+            }                      
+        }
+    }
+}
+
+getArrVal(state : Normal, var : VarName, d : int) -> Maybe<int>{
+    switch(lookupTree(state.variablesValues, var)){
+        Some(v) : {
+            switch(v){
+                ArrayVal(arr) : {
+                    switch(lookupTree(arr, d)){
+                        Some(val) : {
+                            switch(val){
+                                Num(dval) : Some(dval)
+                                default : None()
+                            }
+                        }
+                        None() : None()
+                    }
+                }
+                default : None()
+            }
+        }
+        None() : None()
+    }
+}
+
+calcLogic(expr : LogicalExpr, state : Normal) -> Maybe<bool>{
+    switch(expr){
+        Or(l, r) : {
+            maybeBind2(\a, b -> {Some(a || b)})(calcLogic(l, state), calcLogic(r, state))
+        }
+        And(l, r) : {
+            maybeBind2(\a, b -> {Some(a && b)})(calcLogic(l, state), calcLogic(r, state))
+        }
+        
+        EQ(l, r) : {
+            maybeBind2(\a, b -> {Some(a == b)})(calc(l, state), calc(r, state))
+        }
+        NEQ(l, r) : {
+            maybeBind2(\a, b -> {Some(a != b)})(calc(l, state), calc(r, state))
+        }
+        LS(l, r) : {
+            maybeBind2(\a, b -> {Some(a < b)})(calc(l, state), calc(r, state))
+        }
+        GT(l, r) : {
+            maybeBind2(\a, b -> {Some(a > b)})(calc(l, state), calc(r, state))
+        }
+        LEQ(l, r) : {
+            maybeBind2(\a, b -> {Some(a <= b)})(calc(l, state), calc(r, state))
+        }
+        GEQ(l, r) : {
+            maybeBind2(\a, b -> {Some(a >= b)})(calc(l, state), calc(r, state))
+        }
+    }
+}
+eatSubs(subs : [flow]){
+    fold(subs[1], subs[0], \acc, nextsub -> Sub(acc, nextsub));
+}
+eatDivs(divs : [flow]){
+    fold(divs[1], divs[0], \acc, nextdiv -> Div(acc, nextdiv));
+}
+
+lingoGrammarOp : ref Maybe<[PegOp]> = ref None();
+lingoGrammar(){
+    onlyOnce(lingoGrammarOp, \ -> {
+        compilePegGrammar("#include /home/boris/MTK/nemoGrammar.lingo");
+    });
+}
+actions = SemanticActions(setTree(setTree(defaultPegActions.t, "eatSubs", eatSubs), "eatDivs", eatDivs));
+
+main(){
+    prog = "
+        VAR v : int;
+        VAR x : [int];
+        {
+            v := 1;
+            {
+                v := v + 1;
+                U v := v - 1;
+                U v := 100;
+            };
+            while(v < 10){
+                v := v + 1;
+            }
+            if(v == 10){
+                print(1000 * v);
+            }
+            x[0] := 3;
+            print(x + x[0]);
+            print(v);
+        }
+    ";
+    ast = parsic(lingoGrammar(), prog, actions);
+    vmcode = translateIntoVmCode(ast);
+    switch(vmcode.first){
+        Normal(a, b, c) : {
+            println(vmcode.second);
+            runVM(vmcode.first, vmcode.second);
+        }
+        Critical(l, m) : {
+            println(m);
+            quit(1);
+        }
+    }
+    quit(0);
+}

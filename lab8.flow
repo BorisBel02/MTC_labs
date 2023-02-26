@@ -1,0 +1,187 @@
+import string;
+import lingo/peg;
+import lingo/pegcode/driver;
+
+Expr ::= Div, Mult, Sub, Add, Neg, Var, Num;
+Div(left : Expr, right : Expr);
+Mult(left : Expr, right : Expr);
+Sub(left : Expr, right : Expr);
+Add(left : Expr, right : Expr);
+Neg(negExpr : Expr);
+Var(varName : string);
+Num(value : int);
+
+
+
+Rational(numenator : int, denominator : int);
+
+
+i2r(i : int) -> Maybe<Rational>{
+    Some(Rational(i, 1));
+}
+r2s(r : Maybe<Rational>){
+    r ?? {
+        i2s(r.numenator) + "/" + i2s(r.denominator)
+    }
+    : "None"
+}
+divR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator, ll.denominator * lr.numenator)))(l, r)
+}
+multR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\lr, rr -> simplify(Rational(lr.numenator * rr.numenator, lr.denominator * rr.denominator)))(l, r)
+    
+}
+subR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator - lr.numenator * ll.denominator, ll.denominator * lr.denominator)))(l, r)
+}
+addR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator + lr.numenator * ll.denominator, ll.denominator * lr.denominator)))(l, r)
+}
+negR(r : Maybe<Rational>) -> Maybe<Rational>{
+    r ?? Some(Rational(-r.numenator, r.denominator))
+    : None();
+    
+}
+
+
+simplify(val : Rational) -> Maybe<Rational> {
+    divisor = gcd(val.numenator, val.denominator);
+    Some(Rational(val.numenator / divisor, val.denominator / divisor))
+}
+
+
+calc(ast : Expr, variables : Tree<string, int>) -> Maybe<Rational>{
+    switch(ast){
+        Div(l, r) : {divR(calc(l, variables), calc(r, variables))}
+        Mult(l, r) : {multR(calc(l, variables), calc(r, variables))}
+        Sub(l, r) : {subR(calc(l, variables), calc(r, variables))}
+        Add(l, r) : {addR(calc(l, variables), calc(r, variables))}
+        Neg(negExp) : {negR(calc(negExp, variables))}
+        Num(val) : {i2r(val)}
+        Var(name) : {
+            variableValue : Maybe<int> = lookupTree(variables, name);
+            switch(variableValue){
+                None(): None();
+                Some(v): Some(Rational(v, 1));
+            }
+        }
+    }
+}
+
+diff(ast : Expr, var : string) -> Expr{
+    switch(ast){
+        Div(l, r) : Div(Sub(Mult(diff(l, var), r), Mult(l, diff(r, var))), Mult(r, r))
+        Mult(l, r) : Add(Mult(diff(l, var), r), Mult(l, diff(r, var)))
+        Sub(l, r) : Sub(diff(l, var), diff(r, var))
+        Add(l, r) : Add(diff(l, var), diff(r, var))
+        Neg(negExp) : Neg(diff(negExp, var))
+        Num(val) : Num(0);
+        Var(name) : {
+            if(var == name){
+                Num(1)
+            }
+            else{
+                Num(0)
+            }
+        }
+    }
+}
+reduce(exp : Expr) ->   Expr{
+    switch (exp) {
+        Div(l, r) : {
+            left : Expr = reduce(l);
+            right : Expr = reduce(r);
+            if (left == Num(0)){
+                Num(0);
+            }
+            else if(left == right){
+                Num(1);
+            }
+            else {
+                Div(left, right);
+            }
+        }
+        Mult(l, r) : {
+            left : Expr = reduce(l);
+            right : Expr = reduce(r);
+            if(left == Num(1)){
+                right;
+            }
+            else if(right == Num(1)){
+                left;
+            }
+            else if(left == Num(0) || (right == Num(0))){
+                Num(0);
+            }
+            else{
+                Mult(left, right);
+            }
+        }
+        Sub(l, r) : {
+            left : Expr = reduce(l);
+            right : Expr = reduce(r);
+            if(left == Num(0)){
+                Neg(right);
+            }
+            else if(right == Num(0)){
+                left;
+            }
+            else if(left == right){
+                Num(0);
+            }
+            else {
+                Sub(left, right);
+            }
+        }
+        Add (l, r) : {
+            left : Expr = reduce(l);
+            right : Expr = reduce(r);
+            if(left == Num(0)){
+                right;
+            }
+            else if(right == Num(0)){
+                left;
+            }
+            else{
+                Add(left, right);
+            }
+        }
+        
+        default : exp;
+    }
+}
+
+lingoGrammarOp : ref Maybe<[PegOp]> = ref None();
+lingoGrammar(){
+    onlyOnce(lingoGrammarOp, \ -> {
+        compilePegGrammar("#include /home/boris/MTK/7grammar.lingo");
+    });
+}
+eatSubs(subs : [flow]){
+    fold(subs[1], subs[0], \acc, nextsub -> Sub(acc, nextsub));
+}
+eatDivs(divs : [flow]){
+    fold(divs[1], divs[0], \acc, nextdiv -> Div(acc, nextdiv));
+}
+main(){
+    variables = [Pair("x", 2), Pair("y", 5)];
+    variablesTree = setTreeValues(TreeEmpty(), variables);
+
+    actions = SemanticActions(setTree(setTree(defaultPegActions.t, "eatSubs", eatSubs), "eatDivs", eatDivs));
+
+    expStr = "x - 2 + 3 * 4 / x * 1 + 1";
+
+    ast = parsic(lingoGrammar(), reverse(expStr), actions);
+    println(ast);
+
+    ast_diff = diff(ast, "x");
+    println(ast_diff);
+
+    ast_reduced = reduce(ast_diff);
+    println(ast);
+    
+    result = calc(ast_reduced, variablesTree);
+
+    println(r2s(result));
+}

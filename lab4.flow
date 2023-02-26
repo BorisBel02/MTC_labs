@@ -1,0 +1,18 @@
+import runtime;
+import material/material;
+import ds/array;
+import ds/tree;
+
+inds(a : [int], m : int) -> [Pair<int, int>]{
+    
+    index = foldi(a, t = makeTree(), \i, t, m -> setTree(t, a[i], arrayPush(t, lookupTreeDef(t, a[i], []), i)));
+
+    foldi(a, [], \i, res, ai -> concat(res, map(lookupTreeDef(index, m-ai, []), \j -> Pair(i, j))));
+
+
+}
+
+main(){
+    a = [1, 2, 3, 4, 5 ,6];
+    println(inds(a, 5));
+}

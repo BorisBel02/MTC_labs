@@ -1,0 +1,47 @@
+2022-09-16 17:53:52
+neko flow.n  hello.flow
+/home/boris/flow9/lib/dynamic.flow:26: Exception from eval: I could not make native Native.isStructName: Could not find native isStructName in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/dynamic.flow:42: Exception from eval: I could not make native Native.voidValue: Could not find native voidValue in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/runtime.flow:217: Exception from eval: I could not make native Native.getClipboardToCB: Could not find native getClipboardToCB in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/runtime.flow:434: Exception from eval: I could not make native Native.getKeysList: Could not find native getKeysList in Native. Recompile flowrunner.hxml, flowflash.hxml
+
+2022-09-16 18:40:35
+neko flow.n  int2str
+Could not find int2str.flow. Use -I <path>
+
+2022-09-16 18:41:43
+neko flow.n  int2str.flow
+int2str.flow:6: *Unknown name during typing: i2s
+
+2022-09-16 18:45:39
+neko flow.n  int2str.flow
+/home/boris/flow9/lib/rendersupport.flow:418: Could not read file for string: "#include resources/fontconfig.json".  Give the path relative to flow/.
+
+2022-09-17 13:39:42
+neko flow.n  int2str.flow
+/home/boris/flow9/lib/rendersupport.flow:418: Could not read file for string: "#include resources/fontconfig.json".  Give the path relative to flow/.
+
+2022-09-17 13:43:12
+neko flow.n  int2str.flow
+/home/boris/flow9/lib/rendersupport.flow:418: Could not read file for string: "#include ~/flow9/resources/fontconfig.json".  Give the path relative to flow/.
+
+2022-09-17 13:45:14
+neko flow.n  int2str.flow
+/home/boris/flow9/lib/form/renderform.flow:1529: refArrayPush expected _Pair, not Pair(first: string, second: ConstBehaviour|DynamicBehaviour|FConstructable|FSelect|FSelect2|FSubSelect), as 2nd argument (FSubSelect missing)
+/home/boris/flow9/lib/text/bidi_text.flow:204: Type mismatch:	declared: reflowWordsToBiDi : /\0.([BiDiWord<?>], (?) -> bool, (?) -> string, (?, string) -> ?, bool) -> [BiDiWord<?>]
+/home/boris/flow9/lib/text/bidi_text.flow:204:               	inferred: reflowWordsToBiDi : ([BiDiWord<string>], (string) -> bool, (string) -> string, (string, string) -> string, bool) -> [BiDiWord<string>] (not general enough: the code must work for all ?, not just for string)
+/home/boris/flow9/lib/form/paragraph3.flow:558: Do not redefine isSpace : (string) -> bool
+/home/boris/flow9/lib/string.flow:172:      isSpace is declared globally here: 
+/home/boris/flow9/lib/string.flow:172:      isSpace is defined here: 
+/home/boris/flow9/lib/form/paragraph3.flow:1172: Do not redefine isSpace : (string) -> bool
+/home/boris/flow9/lib/string.flow:172:      isSpace is declared globally here: 
+/home/boris/flow9/lib/string.flow:172:      isSpace is defined here: 
+/home/boris/flow9/lib/form/paragraph3.flow:1648: Give 6 arguments, not 3 to struct ParaWord(word: ParaAtomic, metrics: Transform<FormMetrics>, ghosted: Ghosted, form: GhostForm, interactivityIdM: Maybe<int>, nextWidgetId: DynamicBehaviour<Maybe<int>>)
+
+2022-09-17 13:47:55
+neko flow.n  hello.flow
+/home/boris/flow9/lib/dynamic.flow:26: Exception from eval: I could not make native Native.isStructName: Could not find native isStructName in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/dynamic.flow:42: Exception from eval: I could not make native Native.voidValue: Could not find native voidValue in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/runtime.flow:217: Exception from eval: I could not make native Native.getClipboardToCB: Could not find native getClipboardToCB in Native. Recompile flowrunner.hxml, flowflash.hxml
+/home/boris/flow9/lib/runtime.flow:434: Exception from eval: I could not make native Native.getKeysList: Could not find native getKeysList in Native. Recompile flowrunner.hxml, flowflash.hxml
+

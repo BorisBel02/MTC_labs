@@ -1,0 +1,74 @@
+import string;
+
+import lingo/pegcode/driver;
+import runtime;
+
+Expression ::= Mult, Add, IntConst, Variable;
+
+Add(left : Expression, right : Expression);
+
+Mult(left : Expression, right : Expression);
+
+IntConst(value : int);
+
+Variable(name : string);
+
+
+calculate(exp : Expression, vars : Tree) -> Maybe<int> {
+    
+
+    getValue = \l, r, op -> {
+        switch(calculate(l, vars)) {
+            Some(left) :  switch(calculate(r, vars)){
+                Some(right) : op(left, right);
+                None() : None();
+            }
+            None() : None();
+        }
+    }
+
+    switch(exp) {
+        Add(l,r) : getValue(l,r,\left,right -> Some(left + right));
+        Mult(l,r) : getValue(l,r,\left,right -> Some(left * right));
+        IntConst(value) : Some(value);
+        Variable(name) : lookupTreeDef(vars, name, None());
+    }
+}
+
+expToString(exp : Expression) -> string {
+    switch(exp) {
+         Add(l, r) : "(" + expToString(l) + "+" + expToString(r) + ")";
+         Mult(l, r) : "(" + expToString(l) + "*" + expToString(r) + ")";
+         IntConst(value) : i2s(value);
+         Variable(name) : name
+    }
+}
+
+lingoGrammar() {
+    compilePegGrammar("#include /home/boris/MTK/arith.lingo");
+}
+
+
+printValue(name : string, value : Maybe<int>){
+    switch (value) {
+        Some(v) : println(name + i2s(v) + "\n");
+        None()  : println(name + "None" + "\n");
+    }
+}
+
+
+
+main() {
+   	
+    expr = "y * x * 2 + 3 * y";
+	
+    ast = parsic(lingoGrammar(), expr, defaultPegActions);
+   
+    vars : Tree<string, Maybe<int>> = setTree(setTree(makeTree(), "x", Some(5)), "y", Some(2));
+
+	println("AST to string: " + expToString(ast) + "\n");
+
+   
+    printValue("Calculated value: ", calculate(ast, vars));
+    quit(0);
+}

@@ -1,0 +1,68 @@
+program = ws (definition)*:d  ws body:b ws  ws {Program(:d, :b)};
+
+definition = "VAR" ws variable:n ws ":" ws type:t ws ";" ws {Definition(:n, :t)};
+
+body = ("{" ws (statement)*:s ws "}") {Body(:s)};
+
+
+statement = ws(assignment | test | union | print | if | while | func_expr);
+
+assignment =  assign:a ";"{:a}; 
+assign = variable:n ws ":=" ws expr:e ws{Assignment(:n, :e)};
+expr = (arith_expr | func_expr):e {:e};
+
+union = "{" ws (statement ws unite*):u ws "};" {Union(:u)};
+unite = ws "U" statement:s {:s};
+
+iter = assign:s"*" ws ";" {Iter(:s)};
+
+//arith
+arith_expr = add;
+add = (sub):l ws "+" ws expr:r {Add(:l, :r)} | sub;
+sub = (mult):l ws nextsub*:r {eatSubs(:l, :r)};
+nextsub = ws "-" ws mult:t {:t};
+
+mult = div:l ws "*" ws (mult):r {Mult(:l, :r)} | div;   
+div = neg:l ws nextdiv*:r {eatDivs(:l, :r)};
+nextdiv = ws "/" ws neg:d {:d};
+
+neg = ws "-" ws neg:t {Neg(:t)} | value;
+value = app | num | variable | '('ws expr:t ws')' {:t};
+//
+//functional expression
+func_expr = (upd | app):t ws ";" {:t};
+app = "APP" ws "(" ws variable:array ws "," ws (variable | num):index ")" {App(:array, :index)}
+    | variable:array "[" ws (variable | num):index ws "]" {App(:array, :index)};
+upd = "UPD" ws "(" ws variable:array ws "," ws (variable | num):index ws "," ws arith_expr:val ")" {Upd(:array, :index, :val)}
+    | variable:array "[" ws (variable | num):index ws "]" ws ":=" ws arith_expr:val {Upd(:array, :index, :val)};
+//
+test = "(" ws logicalExpr:log ")" ws "?" ws ';' {Test(:log)};
+
+logicalExpr = (and):t {:t};
+or = term:l ws ("or" | "OR") ws logicalExpr:r {Or(:l, :r)} | term:t {:t};
+and = term:l ws ("and" | "AND") ws logicalExpr:r{And(:l, :r)} | or;
+term = condition | "(" ws logicalExpr ws ")";
+
+if = "if(" ws logicalExpr:cond ws ")" ws body:b {If(:cond, :b)};
+while = "while(" ws logicalExpr:cond ws ")" ws body:b {While(:cond, :b)};
+
+condition = arith_expr:l ws "=="$s ws arith_expr:r {EQ(:l, :r)}
+          | arith_expr:l ws "!="$s ws arith_expr:r {NEQ(:l, :r)}
+          | arith_expr:l ws "<"$s ws arith_expr:r {LS(:l, :r)}
+          | arith_expr:l ws ">"$s ws arith_expr:r {GT(:l, :r)}
+          | arith_expr:l ws "<="$s ws arith_expr:r {LEQ(:l, :r)}
+          | arith_expr:l ws ">="$s ws arith_expr:r {GEQ(:l, :r)};
+
+
+print  = "print(" ws arith_expr:pv ws ")" ws ";"{Print(:pv)};
+
+type = (int | array):t {:t};
+
+int = "int" {Int()};
+array = "[" ws type:t ws "]"{Array(:t)};
+
+variable = name$s {VarName($s)};
+num = digit$s {Num(s2i($s))};
+name = ('a' - 'z')+;
+digit = ('0' - '9')+;
+ws = (' '| '\t' | '\n' | '\r')*;

@@ -1,0 +1,100 @@
+import string;
+import lingo/peg;
+import lingo/pegcode/driver;
+
+Expr ::= Div, Mult, Sub, Add, Neg, Var, Num;
+Div(left : Expr, right : Expr);
+Mult(left : Expr, right : Expr);
+Sub(left : Expr, right : Expr);
+Add(left : Expr, right : Expr);
+Neg(negExpr : Expr);
+Var(varName : string);
+Num(value : int);
+
+
+Rational(numenator : int, denominator : int);
+
+
+i2r(i : int) -> Maybe<Rational>{
+    Some(Rational(i, 1));
+}
+r2s(r : Maybe<Rational>){
+    r ?? {
+        i2s(r.numenator) + "/" + i2s(r.denominator)
+    }
+    : "None"
+}
+divR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator, ll.denominator * lr.numenator)))(l, r)
+}
+multR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\lr, rr -> simplify(Rational(lr.numenator * rr.numenator, lr.denominator * rr.denominator)))(l, r)
+    
+}
+subR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator - lr.numenator * ll.denominator, ll.denominator * lr.denominator)))(l, r)
+}
+addR(l : Maybe<Rational>, r : Maybe<Rational>) -> Maybe<Rational>{
+    maybeBind2(\ll, lr -> simplify(Rational(ll.numenator * lr.denominator + lr.numenator * ll.denominator, ll.denominator * lr.denominator)))(l, r)
+}
+negR(r : Maybe<Rational>) -> Maybe<Rational>{
+    r ?? Some(Rational(-r.numenator, r.denominator))
+    : None();
+    
+}
+
+
+simplify(val : Rational) -> Maybe<Rational> {
+    divisor = gcd(val.numenator, val.denominator);
+    Some(Rational(val.numenator / divisor, val.denominator / divisor))
+}
+
+
+calc(ast : Expr, variables : Tree<string, int>) -> Maybe<Rational>{
+    switch(ast){
+        Div(l, r) : {divR(calc(l, variables), calc(r, variables))}
+        Mult(l, r) : {multR(calc(l, variables), calc(r, variables))}
+        Sub(l, r) : {subR(calc(l, variables), calc(r, variables))}
+        Add(l, r) : {addR(calc(l, variables), calc(r, variables))}
+        Neg(negExp) : {negR(calc(negExp, variables))}
+        Num(val) : {i2r(val)}
+        Var(name) : {
+            variableValue : Maybe<int> = lookupTree(variables, name);
+            switch(variableValue){
+                None(): None();
+                Some(v): Some(Rational(v, 1));
+            }
+        }
+    }
+}
+
+lingoGrammarOp : ref Maybe<[PegOp]> = ref None();
+lingoGrammar(){
+    onlyOnce(lingoGrammarOp, \ -> {
+        compilePegGrammar("#include /home/boris/MTK/7grammar.lingo");
+    });
+}
+
+eatSubs(subs : [flow]){
+    fold(subs[1], subs[0], \acc, nextsub -> Sub(acc, nextsub));
+}
+eatDivs(divs : [flow]){
+    fold(divs[1], divs[0], \acc, nextdiv -> Div(acc, nextdiv));
+}
+main(){
+    variables = [Pair("x", 2), Pair("y", 5)];
+    variablesTree = setTreeValues(TreeEmpty(), variables);
+
+    actions = SemanticActions(setTree(setTree(defaultPegActions.t, "eatSubs", eatSubs), "eatDivs", eatDivs));
+
+    expStr = "x - 2 + 3 * 4 / x * 1 + 1";
+    arr0 : [flow] = [];
+    
+    //arr : [flow] = [flow(Num(1)), arr0];
+    //println(eatDivs(arr));
+    ast = parsic(lingoGrammar(), expStr, actions);
+    println(ast);
+    result = calc(ast, variablesTree);
+    
+    println(r2s(result));
+}

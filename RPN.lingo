@@ -1,0 +1,8 @@
+exp = (num | add | mult)+:rpns {calculateRPN(:rpns)};
+
+add = ws "+" {AddRPN()};
+mult = ws "*" {MultRPN()};
+num = ws digit+ $d {IntConstRPN(s2i($d))};
+
+digit = '0' - '9';
+ws = (' '| '\t' | '\n' | '\r')*;

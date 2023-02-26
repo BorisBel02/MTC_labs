@@ -1,0 +1,12 @@
+exp = add | mult;
+
+term = num | "(" ws exp:e ws ")" {:e} ;
+
+add  =  mult:l ws "+" ws exp:r  { Add(:l, :r) };
+mult = term:l ws "*" ws mult:r { Mult(:l, :r) } | term;
+num  = digit+ $d  { IntConst(s2i($d)) } | variable $s { Variable($s) };
+
+digit = '0'-'9';
+variable = ('A' - 'Z' | 'a' - 'z')+;
+
+ws = (' '| '\t' | '\n' | '\r')*;

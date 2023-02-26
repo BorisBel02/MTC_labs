@@ -1,0 +1,10 @@
+import runtime;
+import material/material;
+import ds/array;
+
+main(){
+	int_arr = [1, 2, 3];
+    a = fold(int_arr, 0, \x, y -> x + y);
+
+    println(a);
+}

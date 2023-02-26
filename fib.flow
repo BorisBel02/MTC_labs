@@ -1,0 +1,21 @@
+import runtime;
+import material/material;
+import ds/array;
+
+
+fib(n:int) -> [int]{
+    if(n == 0){
+        [0]
+    }
+    else if(n == 1){
+        concat(fib(0), [1])
+    }
+    else{
+        arr = fib(n - 1);
+        d = arr[n - 1] + arr[n - 2];
+        concat(fib(n - 1), [ d ]);
+    }
+}
+main(){
+	println(fib(20));
+}
